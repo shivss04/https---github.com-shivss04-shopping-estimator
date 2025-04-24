@@ -124,7 +124,7 @@ def main():
         print(f"Product Name: {product_name}")
         print(f"Product Price: {product_price}")
 
-        time.sleep(5) # Keep browser open for a bit to see the result
+        time.sleep(5) 
 
     except Exception as e:
         print(f'Error during execution: {e}')
