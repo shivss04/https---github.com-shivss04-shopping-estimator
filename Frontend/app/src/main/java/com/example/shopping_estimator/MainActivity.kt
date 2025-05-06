@@ -28,7 +28,11 @@ import com.amazonaws.services.s3.model.PutObjectRequest
 import java.io.ByteArrayInputStream
 import com.amazonaws.regions.Region
 import com.amazonaws.regions.Regions
-
+import com.amazonaws.services.s3.model.CannedAccessControlList
+import okhttp3.*
+import okhttp3.MediaType.Companion.toMediaTypeOrNull
+import okhttp3.RequestBody.Companion.toRequestBody
+import java.net.URLEncoder
 
 class MainActivity : ComponentActivity() {
 
@@ -37,6 +41,8 @@ class MainActivity : ComponentActivity() {
     private var mediaRecorder: MediaRecorder? = null
     private lateinit var s3Client: AmazonS3Client
     private val AWS_S3_BUCKET_NAME = "s3-bucket-name"
+    private val lambdaClient = OkHttpClient()
+    private val YOUR_API_ENDPOINT = "YOUR_API_ENDPOINT"
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -85,16 +91,16 @@ class MainActivity : ComponentActivity() {
             return
         }
 
-        val fileName = "audio_record_${System.currentTimeMillis()}.3gp"
+        val fileName = "audio_record_${System.currentTimeMillis()}.mp3"
         // Cache the audiofile
         val audioFile = File(cacheDir, fileName)
         audioFilePath = audioFile.absolutePath
 
         mediaRecorder = MediaRecorder().apply {
             setAudioSource(MediaRecorder.AudioSource.MIC)
-            setOutputFormat(MediaRecorder.OutputFormat.THREE_GPP)
+            setOutputFormat(MediaRecorder.OutputFormat.MPEG_4)
             setOutputFile(audioFile.absolutePath)
-            setAudioEncoder(MediaRecorder.AudioEncoder.AMR_NB)
+            setAudioEncoder(MediaRecorder.AudioEncoder.HE_AAC)
             try {
                 prepare()
                 start()
@@ -118,6 +124,7 @@ class MainActivity : ComponentActivity() {
         Thread {
             try {
                 val request = PutObjectRequest(AWS_S3_BUCKET_NAME, key, file)
+                    .withCannedAcl(CannedAccessControlList.PublicRead)
                 s3Client.putObject(request)
                 Log.d("uploadToS3", "Uploaded to S3: $key")
                 // Delete temp file
@@ -126,6 +133,34 @@ class MainActivity : ComponentActivity() {
                 Log.e("uploadToS3", "Error uploading to S3: ${e.message}")
             }
         }.start()
+    }
+
+    private fun invokeLambdaFunction(fileName: String) {
+        val lambdaEndpoint =
+            "${YOUR_API_ENDPOINT}?filename=${fileName}"
+        val request = Request.Builder()
+            .url(lambdaEndpoint)
+            .build()
+
+        lambdaClient.newCall(request).enqueue(object : Callback {
+            override fun onFailure(call: Call, e: IOException) {
+                runOnUiThread {
+                    Log.e("Lambda", "Failed to invoke Lambda: ${e.message}")
+                }
+            }
+
+            override fun onResponse(call: Call, response: Response) {
+                val responseBody = response.body?.string()
+                runOnUiThread {
+                    if (response.isSuccessful) {
+                        Log.d("Lambda", "Lambda response: $responseBody")
+                    } else {
+                        Log.e("Lambda", "Lambda error: ${response.code} - $responseBody")
+                    }
+                    response.close()
+                }
+            }
+        })
     }
 
     private fun stopRecording() {
@@ -138,7 +173,9 @@ class MainActivity : ComponentActivity() {
 
                 val audioFile = File(audioFilePath)
                 if (audioFile.exists()) {
-                    uploadToS3(audioFile, "audio_record_${System.currentTimeMillis()}.3gp")  // Upload to S3
+                    val s3Key = "audio_record_${System.currentTimeMillis()}.mp3"
+                    uploadToS3(audioFile, s3Key)
+                    invokeLambdaFunction(s3Key)
                 } else {
                     Log.e("stopRecording", "Audio file does not exist: $audioFilePath")
                 }
@@ -198,7 +235,7 @@ fun Greeting(name: String, modifier: Modifier = Modifier) {
 @Preview(showBackground = true)
 @Composable
 fun GreetingPreview() {
-    MaterialTheme{
+    MaterialTheme {
         Greeting("Shivani")
     }
 }

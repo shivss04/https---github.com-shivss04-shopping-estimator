@@ -52,6 +52,7 @@ dependencies {
     implementation ("com.amazonaws:aws-android-sdk-core:2.+")
     implementation ("com.amazonaws:aws-android-sdk-s3:2.+")
     implementation ("com.amazonaws:aws-android-sdk-ddb:2.+")
+    implementation("com.squareup.okhttp3:okhttp:4.11.0")
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
